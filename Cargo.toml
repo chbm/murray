@@ -2,6 +2,16 @@
 name = "murray"
 version = "0.1.0"
 edition = "2021"
+description = "A minimal actor definition macro using Tokio"
+
+repository = "https://github.com/chbm/murray"
+homepage = "https://github.com/chbm/murray"
+documentation = "https://docs.rs/murray/"
+readme = "README.md"
+license = "MIT"
+categories = ["actor", "async", "messages", "supervisor"]
+keywords = ["actor"]
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,4 +20,3 @@ proc-macro = true
 
 [dependencies]
 quote = "1.0"
-syn = { version = "1.0", features = ["full"] }
