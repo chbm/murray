@@ -9,8 +9,8 @@ homepage = "https://github.com/chbm/murray"
 documentation = "https://docs.rs/murray/"
 readme = "README.md"
 license = "MIT"
-categories = ["actor", "async", "messages", "supervisor"]
-keywords = ["actor"]
+keywords = ["actor", "async", "messages", "supervisor"]
+categories = ["asynchronous", "concurrency"]
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
