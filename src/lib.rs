@@ -1,5 +1,5 @@
 extern crate proc_macro;
-use proc_macro::{TokenStream, TokenTree, token_stream};
+use proc_macro::{TokenStream, TokenTree};
 use quote::*;
 
 struct Opts {
@@ -108,6 +108,32 @@ macro_rules! parse_block {
 }
 //Some(Group { delimiter: Brace, stream: TokenStream [Ident { ident: "A", span: #0 bytes(756..757) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(757..758) }, Ident { ident: "B", span: #0 bytes(76 7..768) }, Group { delimiter: Brace, stream: TokenStream [Ident { ident: "x", span: #0 bytes(783..784) }, Punct { ch: ':', spacing: Alone, span: #0 bytes(784..785) }, Punct { ch: '&', spacing: Alone , span: #0 bytes(786..787) }, Ident { ident: "str", span: #0 bytes(787..790) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(790..791) }], span: #0 bytes(769..801) }, Punct { ch: ',', spacing: Al one, span: #0 bytes(801..802) }], span: #0 bytes(746..808) }) unexpected Punct { ch: ',', spacing: Alone, span: #0 bytes(808..809) }
 
+macro_rules! parse_state {
+    ($i:expr, $v: expr) => {
+        {
+            consume_punct!($i);
+            let mut ii = match $i.next() {
+                Some(TokenTree::Group(block)) => block.stream().into_iter(),
+                _ => fail!("expected block")
+            };
+            while let Some(e) = ii.next() {
+                match e {
+                    TokenTree::Ident(name) => {
+                        consume_punct!(ii); // :
+                        match ii.next() {
+                            Some(TokenTree::Ident(val)) => {
+                                $v.push((name.to_string(), val.to_string()));
+                            },
+                            _ => fail!("bad type in actor state definition")
+                        }
+                    },
+                    TokenTree::Punct(_) => {}, // ignore , 
+                    _ => fail!("unexpected token in actor state definition")
+                }
+            }
+        }
+    }
+}
 
 #[proc_macro]
 pub fn actor(tokens: TokenStream) -> TokenStream {
@@ -137,7 +163,7 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
     };
    
     let mut messages_block = quote!{};
-    let mut extra_state_block = quote!{};
+    let mut extra_state : Vec<(String,String)> = Vec::new();
     
     while let Some(e) = input.next() {
         match e {
@@ -145,7 +171,7 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
                 match i.to_string().as_str() {
                     "Options" => parse_options!(opts, input),
                     "Messages" => { messages_block = parse_block!(input); },
-                    "State" => { extra_state_block = parse_block!(input); },
+                    "State" => parse_state!(input, extra_state),
                     _ => fail!("unexpected key in actor")
                 }
             },
@@ -165,25 +191,26 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
         let mt = format_ident!("{}ActorMessages", t);
         start_params = quote! { #start_params , sup_ch: Option<mpsc::Sender<#mt>> };
         state_opts_block = quote! { #state_opts_block  sup_ch: Option<mpsc::Sender<#mt>>, };
-        state_init_opts_block = quote! { #state_init_opts_block , sup_ch: sup_ch, };
+        state_init_opts_block = quote! { #state_init_opts_block  sup_ch: sup_ch, };
     };
 
     if let Some(t) = opts.idtype {
       let bt = format_ident!("{}", t);
-        start_params = quote! { #start_params , id:  &#bt };
+        start_params = quote! { #start_params , id: &#bt };
         state_opts_block = quote! { #state_opts_block id: #bt, };
         state_init_opts_block = quote! { #state_init_opts_block  id: id.clone(), };
        
     };
+
+
+    for (name, typ) in extra_state {
+        let n = format_ident!("{}", name);
+        let t = format_ident!("{}", typ);
+        state_opts_block = quote! { #state_opts_block #n : Option<#t> , };
+        state_init_opts_block = quote! { #state_init_opts_block #n : None , };
+    }
  
     quote!{
-        impl Default for mpsc::Sender<#messages_ident> {
-            fn default() -> mpsc::Sender<BarActorMessages> {
-                let (tx, _) = mpsc::channel(1);
-                tx
-            }
-        }
-
         #preamble
 
         #[derive(Debug)]
@@ -191,12 +218,11 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
             #messages_block
         }
 
-        #[derive(Debug, Default)]
+        #[derive(Debug)]
         struct #state_ident {
             rx: mpsc::Receiver<#messages_ident>,
             tx: mpsc::Sender<#messages_ident>,
             #state_opts_block
-            #extra_state_block 
         }
 
         impl #actor_ident {
@@ -206,7 +232,6 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
                     rx: rx,
                     tx: tx.clone(),
                     #state_init_opts_block
-                    #extra_state_block
                 };
                 tokio::spawn(async move {
                     while let Some(msg) = state.rx.recv().await {
@@ -217,7 +242,6 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
             }
         }
     }.into()
-
 }
 
 
