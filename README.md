@@ -14,13 +14,6 @@ actor! {
     }
 }
 
-impl FooActor {
-    fn handle(&self, state: &mut FooActorState, msg: FooActorMessages) -> () {
-        ()
-    }
-
-}
-
 actor! {
     Bar,
     Options: {
