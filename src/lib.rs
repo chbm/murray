@@ -272,12 +272,12 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
             };
             messages_block = quote! { #messages_block #n(#sn), };
             messages_match_block = quote! { #messages_match_block 
-                #messages_ident::#n(payload) => self.#hn(state, payload),
+                #messages_ident::#n(payload) => self.#hn(state, payload).await,
             }
         } else {
             messages_block = quote! { #messages_block #n, };
             messages_match_block = quote! { #messages_match_block 
-                #messages_ident::#n => self.#hn(state),
+                #messages_ident::#n => self.#hn(state).await,
             }
             
         }
