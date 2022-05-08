@@ -108,14 +108,22 @@ macro_rules! parse_block {
 }
 //Some(Group { delimiter: Brace, stream: TokenStream [Ident { ident: "A", span: #0 bytes(756..757) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(757..758) }, Ident { ident: "B", span: #0 bytes(76 7..768) }, Group { delimiter: Brace, stream: TokenStream [Ident { ident: "x", span: #0 bytes(783..784) }, Punct { ch: ':', spacing: Alone, span: #0 bytes(784..785) }, Punct { ch: '&', spacing: Alone , span: #0 bytes(786..787) }, Ident { ident: "str", span: #0 bytes(787..790) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(790..791) }], span: #0 bytes(769..801) }, Punct { ch: ',', spacing: Al one, span: #0 bytes(801..802) }], span: #0 bytes(746..808) }) unexpected Punct { ch: ',', spacing: Alone, span: #0 bytes(808..809) }
 
+macro_rules! get_block {
+    ($i:expr) => {
+        {
+            consume_punct!($i);
+            match $i.next() {
+                Some(TokenTree::Group(block)) => block.stream().into_iter(),
+                _ => fail!("expected block")
+            }
+        }
+    }
+}
+
 macro_rules! parse_state {
     ($i:expr, $v: expr) => {
         {
-            consume_punct!($i);
-            let mut ii = match $i.next() {
-                Some(TokenTree::Group(block)) => block.stream().into_iter(),
-                _ => fail!("expected block")
-            };
+            let mut ii = get_block!($i);
             while let Some(e) = ii.next() {
                 match e {
                     TokenTree::Ident(name) => {
@@ -134,6 +142,33 @@ macro_rules! parse_state {
         }
     }
 }
+
+macro_rules! parse_messages {
+    ($i:expr, $v:expr) => {
+        {
+            let mut ii = get_block!($i);
+            while let Some(e) = ii.next() {
+                match e {
+                    TokenTree::Ident(name) => {
+                        match ii.next() {
+                            Some(TokenTree::Punct(_)) => {
+                                // bare variant
+                                $v.push((name.to_string(), None))
+                            },
+                            Some(TokenTree::Group(group)) => {
+                                $v.push((name.to_string(), Some(group.stream())))
+                            },
+                            _ => fail!("unexpected token after message identifier")
+                        }
+                    },
+                    TokenTree::Punct(_) => {}, // ignore trailing ,
+                    _ => fail!("unexpected token in messages definition")
+                }
+            }
+        }
+    }
+}
+
 
 #[proc_macro]
 pub fn actor(tokens: TokenStream) -> TokenStream {
@@ -161,16 +196,19 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
         sup: None,
         idtype: None,
     };
-   
+  
+    let mut messages_structs = quote!{};
     let mut messages_block = quote!{};
     let mut extra_state : Vec<(String,String)> = Vec::new();
-    
+    let mut messages : Vec<(String, Option<TokenStream>)> = Vec::new();
+    let mut messages_match_block = quote!{};
+
     while let Some(e) = input.next() {
         match e {
             TokenTree::Ident(i) => {
                 match i.to_string().as_str() {
                     "Options" => parse_options!(opts, input),
-                    "Messages" => { messages_block = parse_block!(input); },
+                    "Messages" => parse_messages!(input, messages),
                     "State" => parse_state!(input, extra_state),
                     _ => fail!("unexpected key in actor")
                 }
@@ -202,6 +240,29 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
        
     };
 
+    for (name, group) in messages {
+        let n = format_ident!("{}", name);
+        let sn = format_ident!("{}{}", messages_ident, name);
+        let hn = format_ident!("handle_{}", name);
+        if let Some(g) = group {
+            let mut x = quote!{};
+            x = g.into(); // coerse into token_macro2
+            messages_structs = quote! { #messages_structs 
+                #[derive(Debug)]
+                struct #sn { #x } 
+            };
+            messages_block = quote! { #messages_block #n(#sn), };
+            messages_match_block = quote! { #messages_match_block 
+                #messages_ident::#n(payload) => self.#hn(state, payload),
+            }
+        } else {
+            messages_block = quote! { #messages_block #n, };
+            messages_match_block = quote! { #messages_match_block 
+                #messages_ident::#n => self.#hn(state),
+            }
+            
+        }
+    }
 
     for (name, typ) in extra_state {
         let n = format_ident!("{}", name);
@@ -213,6 +274,8 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
     quote!{
         #preamble
 
+        #messages_structs
+        
         #[derive(Debug)]
         enum #messages_ident {
             #messages_block
@@ -240,6 +303,13 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
                 });
                 tx 
             }
+
+          fn handle(&self, state: &mut #state_ident, msg: #messages_ident) -> () {
+            match msg {
+                #messages_match_block
+            }
+            ()
+          }
         }
     }.into()
 }
