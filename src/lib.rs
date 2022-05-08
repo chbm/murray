@@ -4,7 +4,7 @@ use quote::*;
 
 struct Opts {
     sup: Option<String>,
-    idtype: Option<String>,
+    idtype: Option<TokenStream>,
 }
 
 macro_rules! fail {
@@ -46,67 +46,6 @@ macro_rules! consume_punct {
     }
 }
 
-
-macro_rules! get_opt {
-    ($si:expr) => {
-        if let Some(t) = $si.next() {
-            Some(t.to_string())
-        } else {
-            fail!("expected type");
-        }
-
-    }    
-}
-
-macro_rules! parse_options {
-    ($opts:expr,$i:expr) => { 
-        {
-            consume_punct!($i);
-            if let Some(TokenTree::Group(block)) = $i.next() {
-                let mut si = block.stream().into_iter();
-                while let Some(e) = si.next() {
-                    match e {
-                        TokenTree::Ident(i) => {
-                            consume_punct!(si);
-                            match i.to_string().as_str() {
-                                "sup" => {
-                                    $opts.sup = get_opt!(si);
-                                },
-                                "id" => {
-                                    $opts.idtype = get_opt!(si);
-                                },
-                                _ => fail!("unexpected option")
-                            }
-                            consume_punct!(si);
-                             
-                        },
-                        _ => fail!("bad syntax")
-                    }
-                }
-            } else {
-                fail!("expected block");
-            }
-            consume_punct!($i);
-        }
-    }
-}
-// Group { delimiter: Brace, stream: TokenStream [Ident { ident: "sup", span: #0 bytes(697..700) }, Punct { ch: ':', spacing: Alone, span: #0 bytes(700..701) }, Ident { ident: "None", span: #0 bytes(702..706) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(706..707) }, Ident { ident: "id", span: #0 bytes(716..718) }, Punct { ch: ':', spacing: Alone, span: #0 bytes(718..719) }, Ident { ident: "u32", span: #0 bytes(720..723) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(723..724) }], span: #0 bytes(687..730) }
-//Some(Group { delimiter: Brace, stream: TokenStream [Ident { ident: "A", span: #0 bytes(756..757) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(757..758) }, Ident { ident: "B", span: #0 bytes(76 7..768) }, Group { delimiter: Brace, stream: TokenStream [Ident { ident: "x", span: #0 bytes(783..784) }, Punct { ch: ':', spacing: Alone, span: #0 bytes(784..785) }, Punct { ch: '&', spacing: Alone , span: #0 bytes(786..787) }, Ident { ident: "str", span: #0 bytes(787..790) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(790..791) }], span: #0 bytes(769..801) }, Punct { ch: ',', spacing: Al one, span: #0 bytes(801..802) }], span: #0 bytes(746..808) }) unexpected Punct { ch: ',', spacing: Alone, span: #0 bytes(808..809) }
-
-macro_rules! get_block {
-    ($i:expr) => {
-        {
-            consume_punct!($i);
-            match $i.next() {
-                Some(TokenTree::Group(block)) => {
-                    block.stream().into_iter()
-                },
-                _ => fail!("expected block")
-            }
-        }
-    }
-}
-
 macro_rules! parse_type {
     ($i:expr) => {
         {
@@ -139,6 +78,69 @@ macro_rules! parse_type {
         }
     }
 }
+
+macro_rules! get_opt {
+    ($si:expr) => {
+        {
+        let r = if let Some(t) = $si.next() {
+            Some(t.to_string())
+        } else {
+            fail!("expected type");
+        };
+        consume_punct!($si);
+        r
+        }
+    }    
+}
+
+macro_rules! parse_options {
+    ($opts:expr,$i:expr) => { 
+        {
+            consume_punct!($i);
+            if let Some(TokenTree::Group(block)) = $i.next() {
+                let mut si = block.stream().into_iter();
+                while let Some(e) = si.next() {
+                    match e {
+                        TokenTree::Ident(i) => {
+                            consume_punct!(si);
+                            match i.to_string().as_str() {
+                                "sup" => {
+                                    $opts.sup = get_opt!(si);
+                                },
+                                "id" => {
+                                    $opts.idtype = Some(parse_type!(si));
+                                },
+                                _ => fail!("unexpected option")
+                            }
+                             
+                        },
+                        _ => fail!("bad syntax")
+                    }
+                }
+            } else {
+                fail!("expected block");
+            }
+            consume_punct!($i);
+        }
+    }
+}
+// Group { delimiter: Brace, stream: TokenStream [Ident { ident: "sup", span: #0 bytes(697..700) }, Punct { ch: ':', spacing: Alone, span: #0 bytes(700..701) }, Ident { ident: "None", span: #0 bytes(702..706) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(706..707) }, Ident { ident: "id", span: #0 bytes(716..718) }, Punct { ch: ':', spacing: Alone, span: #0 bytes(718..719) }, Ident { ident: "u32", span: #0 bytes(720..723) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(723..724) }], span: #0 bytes(687..730) }
+//Some(Group { delimiter: Brace, stream: TokenStream [Ident { ident: "A", span: #0 bytes(756..757) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(757..758) }, Ident { ident: "B", span: #0 bytes(76 7..768) }, Group { delimiter: Brace, stream: TokenStream [Ident { ident: "x", span: #0 bytes(783..784) }, Punct { ch: ':', spacing: Alone, span: #0 bytes(784..785) }, Punct { ch: '&', spacing: Alone , span: #0 bytes(786..787) }, Ident { ident: "str", span: #0 bytes(787..790) }, Punct { ch: ',', spacing: Alone, span: #0 bytes(790..791) }], span: #0 bytes(769..801) }, Punct { ch: ',', spacing: Al one, span: #0 bytes(801..802) }], span: #0 bytes(746..808) }) unexpected Punct { ch: ',', spacing: Alone, span: #0 bytes(808..809) }
+
+macro_rules! get_block {
+    ($i:expr) => {
+        {
+            consume_punct!($i);
+            match $i.next() {
+                Some(TokenTree::Group(block)) => {
+                    block.stream().into_iter()
+                },
+                _ => fail!("expected block")
+            }
+        }
+    }
+}
+
 
 macro_rules! parse_state {
     ($i:expr, $v: expr) => {
@@ -248,11 +250,12 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
     };
 
     if let Some(t) = opts.idtype {
-      let bt = format_ident!("{}", t);
+        #[allow(unused_assignments)]
+        let mut bt = quote! {};
+        bt = t.into();
         start_params = quote! { #start_params , id: &#bt };
         state_opts_block = quote! { #state_opts_block id: #bt, };
         state_init_opts_block = quote! { #state_init_opts_block  id: id.clone(), };
-       
     };
 
     for (name, group) in messages {
