@@ -319,13 +319,13 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
                 };
                 tokio::spawn(async move {
                     while let Some(msg) = state.rx.recv().await {
-                        self.handle(&mut state, msg);
+                        self.handle(&mut state, msg).await;
                     }
                 });
                 tx 
             }
 
-          fn handle(&self, state: &mut #state_ident, msg: #messages_ident) -> () {
+          async fn handle(&self, state: &mut #state_ident, msg: #messages_ident) -> () {
             match msg {
                 #messages_match_block
             }
