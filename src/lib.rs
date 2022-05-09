@@ -186,7 +186,69 @@ macro_rules! parse_messages {
     }
 }
 
-
+/// Define an actor and it's related structures and types.
+///
+/// # Usage
+///
+/// 
+///```
+///actor! {
+///    Foo,
+///    Messages: {
+///        Msg1,
+///        Msg2,
+///        Msg3 { ch: mpsc::Receiver<String> }
+///    }
+///}
+///
+///actor! {
+///    Bar,
+///    Options: {
+///        sup: Foo,
+///        id: String,
+///    },
+///    Messages: {
+///        A,
+///        B {
+///            x: bool,
+///        },
+///    },
+///    State: {
+///        foo: TypeC,
+///    }
+///}
+///
+///impl FooActor {
+///    async fn handle_msg1(&self, state: &mut FooActorState)  {
+///	...
+///    }
+///    async fn handle_msg2(&self, state: &mut FooActorState)  {
+///	...
+///    }
+///    async fn handle_msg3(&self, state: &mut FooActorState, msg: FooActorMessagesMsg3)  {
+///	...
+///    }
+///}
+///
+///impl BarActor {
+///    async fn handle_a(&self, state: &mut BarActorState)  {
+///	...
+///    }
+///    async fn handle_b(&self, state: &mut BarActorState, msg: BarActorMessagesB)  {
+///	...
+///    }
+///}
+///
+///let sup = FooActor{}.start();
+///let id = String::from("abar");
+///let abar = BarActor{}.start(sup, &id);
+///
+///abar.send(BarActorMessages::B(true));
+///
+///```
+///
+/// Check the README for more details
+///
 #[proc_macro]
 pub fn actor(tokens: TokenStream) -> TokenStream {
     let mut input = tokens.into_iter();
