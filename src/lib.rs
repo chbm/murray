@@ -173,8 +173,11 @@ macro_rules! parse_messages {
                                 $v.push((name.to_string(), None))
                             },
                             Some(TokenTree::Group(group)) => {
-                                $v.push((name.to_string(), Some(group.stream())))
+                                $v.push((name.to_string(), Some(<TokenTree>::from(group))))
                             },
+                            Some(TokenTree::Ident(i)) => {
+                                $v.push((name.to_string(), Some(<TokenTree>::from(i))))
+                            }
                             _ => fail!("unexpected token after message identifier")
                         }
                     },
@@ -237,6 +240,10 @@ macro_rules! parse_messages {
 ///    async fn handle_b(&self, state: &mut BarActorState, msg: BarActorMessagesB)  {
 ///	...
 ///    }
+///
+///    fn init(&self, state: &mut BarActorState) {
+///      ...
+///    }
 ///}
 ///
 ///let sup = FooActor{}.start();
@@ -265,6 +272,7 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
     let actor_ident = format_ident!("{}Actor", basename);
     let messages_ident = format_ident!("{}ActorMessages", basename);
     let state_ident = format_ident!("{}ActorState", basename);
+    let channel_ident = format_ident!("{}ActorChannel", basename);
 
     let preamble = quote!{
         #[derive(Debug)]
@@ -279,7 +287,7 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
     let mut messages_structs = quote!{};
     let mut messages_block = quote!{};
     let mut extra_state : Vec<(String,TokenStream)> = Vec::new();
-    let mut messages : Vec<(String, Option<TokenStream>)> = Vec::new();
+    let mut messages : Vec<(String, Option<TokenTree>)> = Vec::new();
     let mut messages_match_block = quote!{};
 
     while let Some(e) = input.next() {
@@ -303,12 +311,13 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
     let mut start_params = quote! {};
     let mut state_opts_block = quote! {};
     let mut state_init_opts_block = quote! {};
+    let mut init_if_state = quote! {};
 
     if let Some(t) = opts.sup {
         let mt = format_ident!("{}ActorMessages", t);
-        start_params = quote! { #start_params , sup_ch: Option<mpsc::Sender<#mt>> };
+        start_params = quote! { #start_params , sup_ch: mpsc::Sender<#mt> };
         state_opts_block = quote! { #state_opts_block  sup_ch: Option<mpsc::Sender<#mt>>, };
-        state_init_opts_block = quote! { #state_init_opts_block  sup_ch: sup_ch, };
+        state_init_opts_block = quote! { #state_init_opts_block  sup_ch: Some(sup_ch), };
     };
 
     if let Some(t) = opts.idtype {
@@ -320,31 +329,47 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
         state_init_opts_block = quote! { #state_init_opts_block  id: id.clone(), };
     };
 
-    for (name, group) in messages {
+    for (name, tree) in messages {
         let n = format_ident!("{}", name);
-        let sn = format_ident!("{}{}", messages_ident, name);
+        let mut sn = format_ident!("{}{}", messages_ident, name);
         let hn = format_ident!("handle_{}", name.to_lowercase());
-        if let Some(g) = group {
         #[allow(unused_assignments)]
             let mut x = quote!{};
-            x = g.into(); // coerse into token_macro2
-            messages_structs = quote! { #messages_structs 
-                #[derive(Debug)]
-                struct #sn { #x } 
-            };
-            messages_block = quote! { #messages_block #n(#sn), };
-            messages_match_block = quote! { #messages_match_block 
-                #messages_ident::#n(payload) => self.#hn(state, payload).await,
+
+            match tree {
+                Some(v) => {
+                    match v {
+                        TokenTree::Ident(i) => {
+                            sn = format_ident!("{}", i.to_string());
+                        },
+                        TokenTree::Group(g) => {
+                            x = g.stream().into(); // coerse into token_macro2
+                            messages_structs = quote! { #messages_structs 
+                                #[derive(Debug)]
+                                pub struct #sn { #x } 
+                            };
+                        },
+                        _ => {
+                            // unreachable
+                        }
+                    }
+                    messages_block = quote! { #messages_block #n(#sn), };
+                    messages_match_block = quote! { #messages_match_block 
+                        #messages_ident::#n(payload) => self.#hn(state, payload).await,
+                    }
+                },
+                None => {
+                    messages_block = quote! { #messages_block #n, };
+                    messages_match_block = quote! { #messages_match_block 
+                        #messages_ident::#n => self.#hn(state).await,
+                    } 
+                }
             }
-        } else {
-            messages_block = quote! { #messages_block #n, };
-            messages_match_block = quote! { #messages_match_block 
-                #messages_ident::#n => self.#hn(state).await,
-            }
-            
-        }
     }
 
+    if extra_state.len() > 0 {
+        init_if_state = quote! { self.init(&mut state); };
+    }
     for (name, typ) in extra_state {
         let n = format_ident!("{}", name);
         #[allow(unused_assignments)]
@@ -357,28 +382,31 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
     quote!{
         #preamble
 
+        pub type #channel_ident = mpsc::Sender<#messages_ident>;
+
         #messages_structs
         
         #[derive(Debug)]
-        enum #messages_ident {
+        pub enum #messages_ident {
             #messages_block
         }
 
         #[derive(Debug)]
         struct #state_ident {
             rx: mpsc::Receiver<#messages_ident>,
-            tx: mpsc::Sender<#messages_ident>,
+            tx: #channel_ident,
             #state_opts_block
         }
 
         impl #actor_ident {
-            fn start(mut self #start_params) -> mpsc::Sender<#messages_ident> {
+            fn start(mut self #start_params) -> #channel_ident {
                 let (tx, rx) = mpsc::channel(100); 
                 let mut state = #state_ident {
                     rx: rx,
                     tx: tx.clone(),
                     #state_init_opts_block
                 };
+                #init_if_state
                 tokio::spawn(async move {
                     while let Some(msg) = state.rx.recv().await {
                         self.handle(&mut state, msg).await;
