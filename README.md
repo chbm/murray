@@ -81,7 +81,16 @@ For more examples see the murray-tests repo.
 
 There's not actual supervision yet, but otoh there's no actor isolation so a crash would take everything down. 
 
+## Actors ? 
 
+The Actor Model is a model of concurrent computation in which "actors" are self contained units of compute with totally encapsulated state. The world outside the actor comunicates with the actor only by sending it messages. In response to the messages the actor can change its state, send messages and spawn more actors. Conceptually it's similar to Communicating Sequencial Programms, the compute model the Golang runtime implements. 
 
+The actor model has three features that make it increasingly relevant
 
+ * complete "object" encapsulation
+ * shared nothing
+ * lockless concurrency 
 
+No external interference into actor states and no shared or global state between actors remove the race type bugs (ex, thread A modifies a shared value without thread B knowledge). This together with actors always being able to advance as they don't depend on external resources (lockless concurrency) allows for writing safe programms that parallelise automatically in current multicore hardware.
+
+Using actors in Rust doesn't make your program bulletproof, specially compared to writing in Erlang. The Erlang VM isolates the actors as if they were unix processes so an error in an actor doesn't affect the others (in fact, the erlang motto is let it crash). Rust is a stack based language and a crashing bug (eg. an `unwrap` panic) will bring down the whole program. 
