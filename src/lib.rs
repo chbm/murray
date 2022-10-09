@@ -276,7 +276,7 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
 
     let preamble = quote!{
         #[derive(Debug)]
-        struct #actor_ident {}
+        pub struct #actor_ident {}
     };
 
     let mut opts = Opts{
