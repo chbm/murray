@@ -399,7 +399,7 @@ pub fn actor(tokens: TokenStream) -> TokenStream {
         }
 
         impl #actor_ident {
-            fn start(mut self #start_params) -> #channel_ident {
+            pub fn start(mut self #start_params) -> #channel_ident {
                 let (tx, rx) = mpsc::channel(100); 
                 let mut state = #state_ident {
                     rx: rx,
